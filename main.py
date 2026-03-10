@@ -22,7 +22,6 @@ from utils  import visualize_time_series, compute_accuracy, compute_mae
 # ------------------------------------------------------------------------------
 
 ROOT_PATH = "/path/to/data"  # À adapter selon l'environnement
-ROOT_PATH = '/run/user/30545/gvfs/smb-share:server=store,share=store-echange/LBaron/echantillonnage/'  # À adapter selon l'environnement
 
 train_dataset = BuildingTimeSeriesDataset(root_path=ROOT_PATH, split='train')
 val_dataset   = BuildingTimeSeriesDataset(root_path=ROOT_PATH, split='val')
