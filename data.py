@@ -25,12 +25,13 @@ import json
 
 # Répartition des départements par split
 IDS_PER_SPLIT = {
-    'train': [str(k) for k in range(21, 96)],
-    'val':   ["01", "02", "03", "04", "05", "06", "07", "09", "10", "11"],
-    'test':  ["12", "13", "14", "15", "2B", "16", "17", "18", "19", "2A"],
+    "train": [str(k) for k in range(21, 22)],  # 96
+    # "val": ["01", "02", "03", "04", "05", "06", "07", "09", "10", "11"],
+    "val": ["02"],
+    "test": ["12", "13", "14", "15", "2B", "16", "17", "18", "19", "2A"],
 }
 
-MEAN = [105.66, 111.35, 102.18, 106.59 ]
+MEAN = [105.66, 111.35, 102.18, 106.59]
 STD = [52.23, 45.62, 44.30, 39.78]
 
 
@@ -49,16 +50,17 @@ class BuildingTimeSeriesDataset(Dataset):
         split (str): 'train', 'val' ou 'test'.
     """
 
-    def __init__(self, root_path, split='train', norm=False):
+    def __init__(self, root_path, split="train", norm=False):
         self.root_path = root_path
         self.split = split
         self.dep_ids = IDS_PER_SPLIT[self.split]
+        self.norm = norm
 
         # Charge la liste des échantillons et les métadonnées associées
         self.dep_ids, self.building_ids, self.samples = self._find_samples()
 
         # Année d'apparition de chaque bâtiment (référence pour le label)
-        self.date_apparition = json.load(open('date_apparition.json', 'r'))
+        self.date_apparition = json.load(open("date_apparition.json", "r"))
 
         print(f"Split '{split}' chargé — {len(self.samples)} bâtiments.")
 
@@ -72,7 +74,7 @@ class BuildingTimeSeriesDataset(Dataset):
             building_ids (list[str]): Identifiant de bâtiment pour chaque sample.
             samples      (list[list[str]]): Liste de chemins .tif pour chaque bâtiment.
         """
-        all_file_paths = json.load(open('all_file_paths.json', 'r'))
+        all_file_paths = json.load(open("all_file_paths.json", "r"))
         samples, building_ids, dep_ids = [], [], []
 
         for dep in self.dep_ids:
@@ -97,9 +99,9 @@ class BuildingTimeSeriesDataset(Dataset):
               'frame_id'   : int                  — indice du premier frame post-apparition
               'n_channels' : Tensor (T, 4)        — masque de validité des canaux par frame
         """
-        tif_files   = self.samples[idx]
+        tif_files = self.samples[idx]
         building_id = self.building_ids[idx]
-        dep_id      = self.dep_ids[idx]
+        dep_id = self.dep_ids[idx]
 
         year_apparition = int(self.date_apparition[building_id])
 
@@ -110,7 +112,7 @@ class BuildingTimeSeriesDataset(Dataset):
             years.append(int(path[:4]))
 
             with rasterio.open(
-                os.path.join(self.root_path, dep_id, 'orthoimage', building_id, path)
+                os.path.join(self.root_path, dep_id, "orthoimage", building_id, path)
             ) as src:
                 image = src.read().astype(np.float32)  # (C, H, W)
 
@@ -144,13 +146,22 @@ class BuildingTimeSeriesDataset(Dataset):
 
         # Chargement du masque d'emprise du bâtiment
         with rasterio.open(
-            os.path.join(self.root_path, dep_id, 'orthoimage', building_id, 'emprise.tif')
+            os.path.join(
+                self.root_path, dep_id, "orthoimage", building_id, "emprise.tif"
+            )
         ) as src:
             emprise = src.read()[0].astype(np.float32)  # (H, W)
 
+        if self.norm:
+            # Normalisation par canal (en utilisant les stats globales)
+            images = [
+                (img - np.array(MEAN)[:, None, None]) / np.array(STD)[:, None, None]
+                for img in images
+            ]
+
         return {
-            'images':     torch.from_numpy(np.stack(images, axis=0)),  # (T, 4, H, W)
-            'emprise':    torch.from_numpy(emprise),                    # (H, W)
-            'frame_id':   first_frame_id,                               # scalaire
-            'n_channels': torch.tensor(n_channels),                     # (T, 4)
+            "images": torch.from_numpy(np.stack(images, axis=0)),  # (T, 4, H, W)
+            "emprise": torch.from_numpy(emprise),  # (H, W)
+            "frame_id": first_frame_id,  # scalaire
+            "n_channels": torch.tensor(n_channels),  # (T, 4)
         }
