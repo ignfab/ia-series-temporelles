@@ -12,6 +12,7 @@ import torch
 # Visualisation
 # ------------------------------------------------------------------------------
 
+
 def visualize_time_series(dataset, idx, save_path=None):
     """
     Affiche la série temporelle d'images aériennes d'un bâtiment.
@@ -22,11 +23,11 @@ def visualize_time_series(dataset, idx, save_path=None):
         idx (int) : Indice du sample à visualiser.
         save_path (str, optional): Si fourni, sauvegarde la figure à ce chemin.
     """
-    sample       = dataset[idx]
-    series       = sample['images']    # (T, 4, H, W)
-    highlight_t  = sample['frame_id']
-    n_channels   = sample['n_channels']  # (T, 4)
-    T            = series.shape[0]
+    sample = dataset[idx]
+    series = sample["images"]  # (T, 4, H, W)
+    highlight_t = sample["frame_id"]
+    n_channels = sample["n_channels"]  # (T, 4)
+    T = series.shape[0]
 
     fig, axes = plt.subplots(1, T, figsize=(4 * T, 4))
     if T == 1:
@@ -48,17 +49,19 @@ def visualize_time_series(dataset, idx, save_path=None):
         ax.imshow(rgb)
 
         # Titre coloré selon qu'il s'agit ou non du frame d'apparition
-        color = 'red' if t == highlight_t else 'black'
+        color = "red" if t == highlight_t else "black"
         label = f"t={t}\n(apparition)" if t == highlight_t else f"t={t}"
         ax.set_title(label, color=color, fontsize=9)
         ax.axis("off")
 
     building_id = dataset.building_ids[idx]
-    fig.suptitle(f"Bâtiment {building_id} — frame d'apparition : t={highlight_t}", fontsize=11)
+    fig.suptitle(
+        f"Bâtiment {building_id} — frame d'apparition : t={highlight_t}", fontsize=11
+    )
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
         print(f"Figure sauvegardée : {save_path}")
     else:
         plt.show()
@@ -78,10 +81,10 @@ def visualize_prediction(dataset, idx, pred_frame_id, save_path=None):
         pred_frame_id (int): Frame prédit par le modèle.
         save_path (str, optional): Si fourni, sauvegarde la figure.
     """
-    sample      = dataset[idx]
-    series      = sample['images']
-    gt_frame    = sample['frame_id']
-    T           = series.shape[0]
+    sample = dataset[idx]
+    series = sample["images"]
+    gt_frame = sample["frame_id"]
+    T = series.shape[0]
 
     fig, axes = plt.subplots(1, T, figsize=(4 * T, 4))
     if T == 1:
@@ -89,30 +92,30 @@ def visualize_prediction(dataset, idx, pred_frame_id, save_path=None):
 
     for t, ax in enumerate(axes):
         image = series[t].numpy()
-        rgb   = image[:3].transpose(1, 2, 0)
-        rgb   = _normalize_for_display(rgb)
+        rgb = image[:3].transpose(1, 2, 0)
+        rgb = _normalize_for_display(rgb)
         ax.imshow(rgb)
         ax.axis("off")
 
         if t == gt_frame and t == pred_frame_id:
-            ax.set_title(f"t={t}\nGT & pred", color='purple', fontsize=9)
+            ax.set_title(f"t={t}\nGT & pred", color="purple", fontsize=9)
         elif t == gt_frame:
-            ax.set_title(f"t={t}\nGT", color='red', fontsize=9)
+            ax.set_title(f"t={t}\nGT", color="red", fontsize=9)
         elif t == pred_frame_id:
-            ax.set_title(f"t={t}\npred", color='green', fontsize=9)
+            ax.set_title(f"t={t}\npred", color="green", fontsize=9)
         else:
             ax.set_title(f"t={t}", fontsize=9)
 
     legend = [
-        mpatches.Patch(color='red',    label='Ground truth'),
-        mpatches.Patch(color='green',  label='Prédiction'),
-        mpatches.Patch(color='purple', label='GT = Prédiction'),
+        mpatches.Patch(color="red", label="Ground truth"),
+        mpatches.Patch(color="green", label="Prédiction"),
+        mpatches.Patch(color="purple", label="GT = Prédiction"),
     ]
-    fig.legend(handles=legend, loc='lower center', ncol=3, fontsize=9)
+    fig.legend(handles=legend, loc="lower center", ncol=3, fontsize=9)
     plt.tight_layout(rect=[0, 0.06, 1, 1])
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
     else:
         plt.show()
 
@@ -128,17 +131,17 @@ def visualize_emprise(dataset, idx, save_path=None):
         idx (int) : Indice du sample.
         save_path (str, optional): Si fourni, sauvegarde la figure.
     """
-    sample  = dataset[idx]
-    emprise = sample['emprise'].numpy()  # (H, W)
+    sample = dataset[idx]
+    emprise = sample["emprise"].numpy()  # (H, W)
 
     fig, ax = plt.subplots(figsize=(4, 4))
-    ax.imshow(emprise, cmap='gray')
+    ax.imshow(emprise, cmap="gray")
     ax.set_title(f"Emprise — bâtiment {dataset.building_ids[idx]}")
     ax.axis("off")
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
     else:
         plt.show()
 
@@ -148,6 +151,7 @@ def visualize_emprise(dataset, idx, save_path=None):
 # ------------------------------------------------------------------------------
 # Métriques
 # ------------------------------------------------------------------------------
+
 
 def compute_accuracy(preds, targets):
     """
@@ -161,7 +165,7 @@ def compute_accuracy(preds, targets):
         float: Pourcentage de prédictions correctes (0–100).
     """
     if isinstance(preds, torch.Tensor):
-        preds   = preds.cpu().numpy()
+        preds = preds.cpu().numpy()
     if isinstance(targets, torch.Tensor):
         targets = targets.cpu().numpy()
 
@@ -180,7 +184,7 @@ def compute_mae(preds, targets):
         float: MAE en frames.
     """
     if isinstance(preds, torch.Tensor):
-        preds   = preds.cpu().numpy()
+        preds = preds.cpu().numpy()
     if isinstance(targets, torch.Tensor):
         targets = targets.cpu().numpy()
 
@@ -190,6 +194,7 @@ def compute_mae(preds, targets):
 # ------------------------------------------------------------------------------
 # Helpers internes
 # ------------------------------------------------------------------------------
+
 
 def _normalize_for_display(image):
     """

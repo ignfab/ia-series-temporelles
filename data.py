@@ -26,8 +26,8 @@ import json
 # Répartition des départements par split
 IDS_PER_SPLIT = {
     "train": [str(k) for k in range(21, 22)],  # 96
-    # "val": ["01", "02", "03", "04", "05", "06", "07", "09", "10", "11"],
-    "val": ["02"],
+    "val": ["01", "02", "03", "04", "05", "06", "07", "09", "10", "11"],
+    # "val": ["02"],
     "test": ["12", "13", "14", "15", "2B", "16", "17", "18", "19", "2A"],
 }
 
@@ -98,6 +98,8 @@ class BuildingTimeSeriesDataset(Dataset):
               'emprise'    : Tensor (H, W)        — masque de l'emprise du bâtiment
               'frame_id'   : int                  — indice du premier frame post-apparition
               'n_channels' : Tensor (T, 4)        — masque de validité des canaux par frame
+              'years'      : Tensor (T,)         — années correspondantes à chaque frame
+              'building_id' : str                   — identifiant du bâtiment
         """
         tif_files = self.samples[idx]
         building_id = self.building_ids[idx]
@@ -158,10 +160,11 @@ class BuildingTimeSeriesDataset(Dataset):
                 (img - np.array(MEAN)[:, None, None]) / np.array(STD)[:, None, None]
                 for img in images
             ]
-
         return {
             "images": torch.from_numpy(np.stack(images, axis=0)),  # (T, 4, H, W)
             "emprise": torch.from_numpy(emprise),  # (H, W)
             "frame_id": first_frame_id,  # scalaire
             "n_channels": torch.tensor(n_channels),  # (T, 4)
+            "years": torch.tensor(years),  # (T,)
+            "building_id": building_id,  # str
         }
