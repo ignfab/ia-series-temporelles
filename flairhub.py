@@ -47,7 +47,7 @@ model_rgbi.load_state_dict(
 # -- Phase évaluation --
 model_rgb.eval()
 model_rgbi.eval()
-epoch_loss, epoch_acc, epoch_mae = 0.0, 0.0, 0.0
+epoch_loss, epoch_acc, epoch_mae, acc1, acc2 = 0.0, 0.0, 0.0, 0.0, 0.0
 
 couleurs_rvb_19_classes = torch.tensor(
     [
@@ -149,8 +149,16 @@ with torch.no_grad():
         # plt.show()
         epoch_acc += compute_accuracy(pred_frame_id, frame_id)
         epoch_mae += compute_mae(pred_frame_id, frame_id)
+        acc1 += (pred_frame_id + 1 == frame_id).sum().item() + (
+            pred_frame_id - 1 == frame_id
+        ).sum().item()
+        acc2 += (pred_frame_id + 2 == frame_id).sum().item() + (
+            pred_frame_id - 2 == frame_id
+        ).sum().item()
 
     print(
         f"| Acc: {epoch_acc / len(val_loader):.1f}% "
-        f"| MAE: {epoch_mae / len(val_loader):.2f} frames"
+        f"| MAE: {epoch_mae / len(val_loader):.2f} frames "
+        f"| Acc@1: {acc1 / len(val_loader):.1f}% "
+        f"| Acc@2: {acc2 / len(val_loader):.1f}%"
     )
