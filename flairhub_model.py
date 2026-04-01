@@ -96,3 +96,38 @@ class FlairHubModel(nn.Module):
             features = self.encoder(imgs[:, [3, 0, 1]])
         out = self.decoder(*features)[:, [0, 4, 3, 5, 6, 13, 12, 14, 11, 8, 9, 10, 2, 7, 1]]
         return out
+
+# How to use:
+
+# model_irc = FlairHubModel(
+#     ckpt_path="FLAIR-HUB_LC-A_IR_swinbase-upernet.safetensors",
+#     encoder_input_dim=3,
+#     decoder_input_dim=1,
+#     num_classes=19,
+#     encoder_arch="swin_base_patch4_window12_384-upernet",
+#     img_size=512,
+# )
+# model_irc.eval()
+
+
+# model_rgb = FlairHubModel(
+#     ckpt_path="FLAIR-HUB_LC-A_RGB_swinbase-upernet.safetensors",
+#     encoder_input_dim=3,
+#     decoder_input_dim=1,
+#     num_classes=19,
+#     encoder_arch="swin_base_patch4_window12_384-upernet",
+#     img_size=512,
+# )
+# model_rgb.eval()
+
+# outputs_rgb = model_rgb(
+#     images.float().reshape(-1, C, H, W)
+# )  # (B*T, 19, H, W)
+# outputs_irc = model_irc(
+#     images.float().reshape(-1, C, H, W)
+# )  # (B*T, 19, H, W)
+# n_channels = n_channels.reshape(-1, 4)
+# outputs = torch.where(
+#     (n_channels.sum(-1) == 4)[..., None, None, None],
+#     (outputs_irc + outputs_rgb) / 2,
+#     outputs_rgb,
