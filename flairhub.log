@@ -1,0 +1,2 @@
+INFO:__main__:Evaluation terminée | Modèle: FLAIRHUB | Dataset: ['02'] |Seuil bâtiment: 40% | Acc: 70.6% | MAE: 0.52 frames | Acc@1: 0.2% | Acc@2: 0.0%|Confusion matrix (TP FP / FN TN): tensor([[    48651,    127386],
+        [  4248734, 307526589]])

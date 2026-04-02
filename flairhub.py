@@ -2,14 +2,18 @@ import segmentation_models_pytorch as smp
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from data import BuildingTimeSeriesDataset
+from data import BuildingTimeSeriesDataset, IDS_PER_SPLIT
 from config import BATCH_SIZE, NUM_WORKERS, SEUIL_BATIMENT
 from utils import visualize_time_series, compute_accuracy, compute_mae
 import matplotlib.pyplot as plt
+import csv
+import logging
 
 # ------------------------------------------------------------------------------
 # 1. Chargement des datasets
 # ------------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+logging.basicConfig(filename="flairhub_INC.log", encoding="utf-8", level=logging.INFO)
 
 ROOT_PATH = "/home/LBaron/git-clones/gitlab.ign.fr/exploration-bdtopo/batiment/output_vrai"  # À adapter selon l'environnement
 
@@ -73,7 +77,10 @@ couleurs_rvb_19_classes = torch.tensor(
     ]
 )
 
-dict_date_apparition = {}
+tp_total = fp_total = fn_total = tn_total = 0
+
+dict_date_apparition = [{}]
+entetes = []
 with torch.no_grad():
     for batch in tqdm(val_loader):
         images = batch["images"]  # (B, T, 4, H, W)
@@ -141,7 +148,8 @@ with torch.no_grad():
             detection_trouvee, premiere_detection, torch.zeros(B, dtype=torch.long)
         )
 
-        dict_date_apparition[building_id[0]] = years[0][pred_frame_id[0]].item()
+        dict_date_apparition[0][building_id[0]] = years[0][pred_frame_id[0]].item()
+        entetes.append(building_id[0])
 
         # preds_rvb = couleurs_rvb_19_classes[preds]  # (B, T, H, W, 3)
         # print(f"preds_rvb.shape = {preds_rvb.shape}")
@@ -156,9 +164,55 @@ with torch.no_grad():
             pred_frame_id - 2 == frame_id
         ).sum().item()
 
+        # masque d'emprise broadcasté (B, T, H, W)
+        mask_emprise = emprise.unsqueeze(1) > 0
+
+        # vérité terrain binaire par frame (B, T)
+        # years: (B, T), frame_id: (B,)
+        apparition_year = years.gather(1, frame_id.unsqueeze(1))  # (B, 1)
+        gt_presence = (
+            (years >= apparition_year.squeeze(1)).unsqueeze(-1).unsqueeze(-1)
+        )  # (B, T, 1, 1)
+        gt_mask = gt_presence & mask_emprise  # (B, T, H, W) bool
+
+        # masque prédit pour la classe bâtiment (1) — restreint à l'emprise
+        pred_mask = (preds == 1) & mask_emprise  # (B, T, H, W) bool
+
+        # compter
+        tp = (pred_mask & gt_mask).sum().item()
+        fp = (pred_mask & (~gt_mask)).sum().item()
+        fn = ((~pred_mask) & gt_mask).sum().item()
+        tn = ((~pred_mask) & (~gt_mask)).sum().item()
+
+        # accumuler pour tout le dataset
+        tp_total += tp
+        fp_total += fp
+        fn_total += fn
+        tn_total += tn
+
+    confusion = torch.tensor([[tp_total, fp_total], [fn_total, tn_total]])
+
     print(
         f"| Acc: {epoch_acc / len(val_loader):.1f}% "
         f"| MAE: {epoch_mae / len(val_loader):.2f} frames "
         f"| Acc@1: {acc1 / len(val_loader):.1f}% "
         f"| Acc@2: {acc2 / len(val_loader):.1f}%"
+        f"|Confusion matrix (TP FP / FN TN): {confusion}"
     )
+
+    logger.info(
+        f"Evaluation terminée "
+        f"| Modèle: FLAIR-INC "
+        f"| Dataset: {IDS_PER_SPLIT['val']} "
+        f"|Seuil bâtiment: {SEUIL_BATIMENT}% "
+        f"| Acc: {epoch_acc / len(val_loader):.1f}% "
+        f"| MAE: {epoch_mae / len(val_loader):.2f} frames "
+        f"| Acc@1: {acc1 / len(val_loader):.1f}% "
+        f"| Acc@2: {acc2 / len(val_loader):.1f}%"
+        f"|Confusion matrix (TP FP / FN TN): {confusion}"
+    )
+
+    with open("resultats_Flair-INC.csv", "w") as f:
+        writer = csv.DictWriter(f, fieldnames=entetes)
+        writer.writeheader()
+        writer.writerows(dict_date_apparition)
