@@ -6,7 +6,6 @@ from data import BuildingTimeSeriesDataset
 from config import BATCH_SIZE, NUM_WORKERS, SEUIL_BATIMENT
 from utils import visualize_time_series, compute_accuracy, compute_mae
 import matplotlib.pyplot as plt
-import rasterio
 
 # ------------------------------------------------------------------------------
 # 1. Chargement des datasets
@@ -25,7 +24,11 @@ model_rgb = smp.Unet(
     encoder_name="resnet34", encoder_weights="imagenet", in_channels=3, classes=19
 )
 model_rgb.load_state_dict(
-    {key[16:]: val for key, val in torch.load(model_name_rgb).items() if len(key[16:]) > 0}
+    {
+        key[16:]: val
+        for key, val in torch.load(model_name_rgb).items()
+        if len(key[16:]) > 0
+    }
 )
 
 model_name_rgbi = "FLAIR-INC_rgbi_15cl_resnet34-unet_weights.pth"
@@ -33,7 +36,11 @@ model_rgbi = smp.Unet(
     encoder_name="resnet34", encoder_weights="imagenet", in_channels=4, classes=19
 )
 model_rgbi.load_state_dict(
-    {key[16:]: val for key, val in torch.load(model_name_rgbi).items() if len(key[16:]) > 0}
+    {
+        key[16:]: val
+        for key, val in torch.load(model_name_rgbi).items()
+        if len(key[16:]) > 0
+    }
 )
 
 
@@ -66,40 +73,60 @@ couleurs_rvb_19_classes = torch.tensor(
     ]
 )
 
+dict_date_apparition = {}
 with torch.no_grad():
     for batch in tqdm(val_loader):
         images = batch["images"]  # (B, T, 4, H, W)
         frame_id = batch["frame_id"]
         emprise = batch["emprise"]  # (B, H, W)
         n_channels = batch["n_channels"]  # (B, T, 4)
+        years = batch["years"]  # (B, T)
+        building_id = batch["building_id"]  # (B,)
+
         B, T, C, H, W = (
             images.shape
         )  # sauvegarder le batch size et la séquence temporelle
 
-        outputs_rgb = model_rgb(images.float().reshape(-1, C, H, W)[:, :3])  # (B*T, 19, H, W)
-        outputs_rgbi = model_rgbi(images.float().reshape(-1, C, H, W))  # (B*T, 19, H, W)
+        # on utilise les deux modèles pour faire des prédictions à partir des données RGB et RGBI, puis on combine les résultats en fonction du nombre de canaux disponibles
+        outputs_rgb = model_rgb(
+            images.float().reshape(-1, C, H, W)[:, :3]
+        )  # (B*T, 19, H, W)
+        outputs_rgbi = model_rgbi(
+            images.float().reshape(-1, C, H, W)
+        )  # (B*T, 19, H, W)
         n_channels = n_channels.reshape(-1, 4)
-        outputs = torch.where((n_channels.sum(-1) == 4)[..., None, None, None], (outputs_rgbi + outputs_rgb)/2, outputs_rgb)
+        outputs = torch.where(
+            (n_channels.sum(-1) == 4)[..., None, None, None],
+            (outputs_rgbi + outputs_rgb) / 2,
+            outputs_rgb,
+        )  # on regarde les canaux disponibles pour chaque image et on fait une moyenne des prédictions des deux modèles si les 4 canaux sont présents, sinon on garde les prédictions du modèle RGB
         preds = torch.argmax(outputs, dim=1)  # (B*T, H, W)
         preds = preds.reshape(B, T, H, W)  # (B, T, H, W)
         preds_emprise = (preds + 1) * emprise.unsqueeze(
             1
         )  # (B, T, H, W) — ne garder que les prédictions dans l'emprise
 
-        masque_classe1 = (preds_emprise == 1)  # B x T x H x W
+        masque_classe1 = preds_emprise == 1  # B x T x H x W
         nb_pixels_classe1 = masque_classe1.sum(dim=(-2, -1)).float()  # B x T
         taille_emprise = emprise.sum(dim=(-2, -1)).float().unsqueeze(1)  # B x 1
-        proportions = nb_pixels_classe1 / taille_emprise * 100  # Proportion (%) par (b, t), shape : B x T
-        au_dessus_seuil = proportions >= SEUIL_BATIMENT
+        proportions = (
+            nb_pixels_classe1 / taille_emprise * 100
+        )  # Proportion (%) par (b, t), shape : B x T
+        au_dessus_seuil = (
+            proportions >= SEUIL_BATIMENT
+        )  # B x T, booléen indiquant pour chaque frame si la proportion dépasse le seuil défini pour considérer qu'il y a un bâtiment détecté
+
         detection_trouvee = au_dessus_seuil.any(dim=1)  # B
-        premiere_detection = au_dessus_seuil.float().argmax(dim=1)  # B
+        premiere_detection = au_dessus_seuil.float().argmax(
+            dim=1
+        )  # B -> indice du premier frame où la proportion dépasse le seuil
 
         pred_frame_id = torch.where(
-            detection_trouvee,
-            premiere_detection,
-            torch.zeros(B, dtype=torch.long)
+            detection_trouvee, premiere_detection, torch.zeros(B, dtype=torch.long)
         )
-                
+
+        dict_date_apparition[building_id[0]] = years[0][pred_frame_id[0]].item()
+
         # preds_rvb = couleurs_rvb_19_classes[preds]  # (B, T, H, W, 3)
         # print(f"preds_rvb.shape = {preds_rvb.shape}")
         # plt.imshow(preds_rvb[0, 0])
