@@ -1,2 +1,3 @@
 INFO:__main__:Evaluation terminée | Modèle: FLAIR-INC | Dataset: ['02'] |Seuil bâtiment: 40% | Acc: 67.6% | MAE: 0.53 frames | Acc@1: 0.2% | Acc@2: 0.1%|Confusion matrix (TP FP / FN TN): tensor([[   115420,    358858],
-        [  4181965, 307295117]])
+        [  4181965, 307295117]])INFO:__main__:Evaluation terminée | Modèle: FLAIR-INC | Dataset: ['01', '02', '03', '04', '05', '06', '07', '09', '10', '11'] |Seuil bâtiment: 40% | Acc: 48.9% | MAE: 0.96 frames | Acc@1: 0.3% | Acc@2: 0.1%|Confusion matrix (TP FP / FN TN): tensor([[   2248030,    2970839],
+        [  39654134, 3252898517]])

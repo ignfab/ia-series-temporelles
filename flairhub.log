@@ -1,2 +1,2 @@
-INFO:__main__:Evaluation terminée | Modèle: FLAIRHUB | Dataset: ['02'] |Seuil bâtiment: 40% | Acc: 70.6% | MAE: 0.52 frames | Acc@1: 0.2% | Acc@2: 0.0%|Confusion matrix (TP FP / FN TN): tensor([[    48651,    127386],
-        [  4248734, 307526589]])
+INFO:__main__:Evaluation terminée | Modèle: FLAIRHUB | Dataset: ['01', '02', '03', '04', '05', '06', '07', '09', '10', '11'] |Seuil bâtiment: 40% | Acc: 63.7% | MAE: 0.64 frames | Acc@1: 0.2% | Acc@2: 0.1%|Confusion matrix (TP FP / FN TN): tensor([[    681083,    1627936],
+        [  41221081, 3254241420]])

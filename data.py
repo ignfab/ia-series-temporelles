@@ -25,9 +25,8 @@ import json
 
 # Répartition des départements par split
 IDS_PER_SPLIT = {
-    "train": [str(k) for k in range(21, 22)],  # 96
-    # "val": ["01", "02", "03", "04", "05", "06", "07", "09", "10", "11"],
-    "val": ["02"],
+    "train": [str(k) for k in range(21, 96)],  # 96
+    "val": ["01", "02", "03", "04", "05", "06", "07", "09", "10", "11"],
     "test": ["12", "13", "14", "15", "2B", "16", "17", "18", "19", "2A"],
 }
 
