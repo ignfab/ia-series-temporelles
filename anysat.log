@@ -1,0 +1,4 @@
+INFO:__main__:[Epoch 0] Train loss: 1.9761 | Acc: 25.3%
+INFO:__main__:[Epoch 0] Val   loss: 1.9141 | Acc: 28.8% | MAE: 1.18 frames
+INFO:__main__:[Epoch 0] Train loss: 1.9605 | Acc: 20.6%
+INFO:__main__:[Epoch 0] Val   loss: 1.9427 | Acc: 28.8% | MAE: 1.19 frames
