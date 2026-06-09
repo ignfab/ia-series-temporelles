@@ -1,0 +1,251 @@
+import json
+import os
+import pandas as pd
+import torch
+import yaml
+from torch.utils.data import DataLoader
+
+from data.data import BuildingTimeSeriesDataset, collate_fn_fixed, collate_fn_max
+from models.flairhub_model import FlairHubWrapper
+from models.flairinc_model import FlairIncWrapper
+from utils.metrics import AverageMeter
+
+
+def segment_batch(batch, model, device):
+    """Renvoie les prédictions (B, T, H, W), l'emprise (B, H, W), frame_id (B,)
+    et years (B, T)."""
+    images = batch["images"].to(device)            # (B, T, 4, H, W)
+    emprise = batch["emprise"].to(device)          # (B, H, W)
+    frame_id = batch["frame_id"].to(device)        # (B,)
+    n_channels = batch["n_channels"].to(device)    # (B, T, 4)
+    years = batch["years"].to(device)              # (B, T)
+
+    B, T, C, H, W = images.shape
+    images_flat = images.float().reshape(B * T, C, H, W)
+
+    outputs = model(images_flat, n_channels)           # (B*T, K, H, W)
+    
+    preds = torch.argmax(outputs, dim=1)           # (B*T, H, W)
+    preds = preds.reshape(B, T, H, W)
+    return preds, emprise, frame_id, years
+
+
+def predict_frame_id(preds, emprise, years, seuils, building_class_idx):
+    """Pour chaque seuil, renvoie l'indice de la première frame valide où la
+    proportion de pixels "bâtiment" dans l'emprise dépasse le seuil.
+
+    Returns: (B, S) tensor of predicted frame indices.
+    """
+    # preds: (B, T, H, W), emprise: (B, H, W), years: (B, T).
+    # On décale les classes prédites de +1 puis on multiplie par l'emprise pour
+    # ne conserver que les prédictions à l'intérieur de l'emprise (les pixels
+    # hors emprise prennent la valeur 0, distincte de toute classe décalée).
+    preds_emprise = (preds + 1) * emprise.unsqueeze(1).long()           # (B, T, H, W)
+    masque_batiment = preds_emprise == building_class_idx
+    nb_pixels_batiment = masque_batiment.sum(dim=(-2, -1)).float()      # (B, T)
+    taille_emprise = emprise.sum(dim=(-2, -1)).float().unsqueeze(1).clamp(min=1.0)  # (B, 1)
+    proportions = nb_pixels_batiment / taille_emprise * 100.0           # (B, T)
+    seuils_t = torch.tensor(seuils, dtype=torch.float32, device=proportions.device)  # (S,)
+    above = proportions.unsqueeze(-1) >= seuils_t.view(1, 1, -1)        # (B, T, S)
+    # On masque les frames de padding (years==0 dans le collate par défaut).
+    valid_mask = years > 0                                              # (B, T)
+    above = above & valid_mask.unsqueeze(-1)
+    detection_found = above.any(dim=1)                                  # (B, S)
+    first_detection = above.float().argmax(dim=1)                       # (B, S)
+    last_valid_frame = valid_mask.long().sum(dim=1) - 1                 # (B,)
+
+    pred_frame_id = torch.where(
+        detection_found,
+        first_detection,
+        last_valid_frame.unsqueeze(-1).expand(-1, len(seuils)),
+    )                                                                   # (B, S)
+    return pred_frame_id
+
+
+if __name__ == "__main__":
+    with open("configs/config_seuil.yaml", "r") as f:
+        config = yaml.safe_load(f)
+
+    EXP_NAME = config["exp_name"]
+    save_path = os.path.join("results", EXP_NAME)
+    os.makedirs(save_path, exist_ok=True)
+    ROOT_PATH = config["root_path"]
+    BATCH_SIZE = config["batch_size"]
+    NUM_WORKERS = config["num_workers"]
+    N_CLASSES = config["n_classes"]
+    N_YEARS = config.get("n_years", 26)
+    SEUILS = config["seuils"]
+    BUILDING_CLASS_IDX = config.get("building_class_idx", 1)
+    SPLIT = config.get("split", "test")
+    USE_FLOAT16 = config.get("use_float16", False)
+    device = config["device"]
+    collate_fn = collate_fn_fixed if config["collate_fn"] == "fixed" else collate_fn_max
+
+    # Save config in results folder for reproducibility
+    with open(os.path.join(save_path, "config.yaml"), "w") as f:
+        yaml.dump(config, f)
+
+    # ------------------------------------------------------------------------------
+    # 1. Dataset / DataLoader
+    # ------------------------------------------------------------------------------
+    train_dataset = BuildingTimeSeriesDataset(root_path=ROOT_PATH,
+                                            split="train+val",
+                                            norm=True,
+                                            augment=False,
+                                            dataset_ext=config.get("dataset_ext", "tif")
+                                            )
+    test_dataset = BuildingTimeSeriesDataset(root_path=ROOT_PATH,
+                                             split="test",
+                                             norm=True,
+                                             augment=False,
+                                             dataset_ext=config.get("dataset_ext", "tif")
+                                             )
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, collate_fn=collate_fn
+    )
+
+    test_loader = DataLoader(
+        test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, drop_last=False, collate_fn=collate_fn
+    )
+
+    # ------------------------------------------------------------------------------
+    # 2. Modèle(s) de segmentation gelé(s)
+    # ------------------------------------------------------------------------------
+    if config["model"] == "flairhub":
+        model = FlairHubWrapper(
+            rgb_only=config["rgb_only"],
+            encoder_only=False,
+            fuse_mode="average",
+            use_float16=USE_FLOAT16
+        )
+    elif config["model"] == "flairinc":
+        model = FlairIncWrapper(
+            rgb_only=config["rgb_only"],
+            encoder_only=False,
+            fuse_mode="average",
+            use_float16=USE_FLOAT16
+        )  
+    else:
+        raise ValueError(f"Unknown model {config['model']}")
+
+    for p in model.parameters():
+        p.requires_grad = False
+    model.eval().to(device)
+
+    # ------------------------------------------------------------------------------
+    # 3. Boucle d'évaluation : un AverageMeter par seuil
+    # ------------------------------------------------------------------------------
+    meters = [
+        AverageMeter(n_classes=N_CLASSES, n_years=N_YEARS, device=device)
+        for _ in SEUILS
+    ]
+    # AverageMeter attend une loss : on passe 0 (pas d'entraînement ici).
+    zero_loss = torch.tensor(0.0, device=device)
+
+    print(f"Recherche du seuil sur train+val — {len(train_dataset)} bâtiments, "
+          f"{len(SEUILS)} seuils, modèle={config['model']}, rgb_only={config['rgb_only']}.")
+
+    with torch.no_grad():
+        for batch_id, batch in enumerate(train_loader):
+            preds, emprise, frame_id, years = segment_batch(
+                batch, model, device
+            )
+            pred_frame_id = predict_frame_id(
+                preds, emprise, years, SEUILS, BUILDING_CLASS_IDX
+            )  # (B, S)
+
+            for s_idx in range(len(SEUILS)):
+                meters[s_idx].update(zero_loss, pred_frame_id[:, s_idx], frame_id, years)
+
+            if (batch_id + 1) % config["print_interval"] == 0:
+                print(f"  [Iter {batch_id + 1}/{len(train_loader)}]")
+
+    # ------------------------------------------------------------------------------
+    # 4. Résultats : log + matrices de confusion par seuil
+    # ------------------------------------------------------------------------------
+    summary = {"seuils": list(SEUILS)}
+    accs, acc1s, acc2s, maes, signed_maes = [], [], [], [], []
+    for s_idx, seuil in enumerate(SEUILS):
+        _, mae, signed_mae, acc, acc1, acc2 = meters[s_idx].get_metrics()
+        accs.append(acc)
+        acc1s.append(acc1)
+        acc2s.append(acc2)
+        maes.append(mae)
+        signed_maes.append(signed_mae)
+        print(
+            f"[Seuil {seuil}%] "
+            f"Acc: {acc * 100:.2f}% | Acc@1: {acc1 * 100:.2f}% | Acc@2: {acc2 * 100:.2f}% "
+            f"| MAE: {mae:.3f} frames | Signed MAE: {signed_mae:.3f} frames"
+        )
+
+    summary.update({
+        "train_acc": accs,
+        "train_acc1": acc1s,
+        "train_acc2": acc2s,
+        "train_mae": maes,
+        "train_signed_mae": signed_maes,
+    })
+
+    best_seuil_idx = accs.index(max(accs))
+    best_seuil = SEUILS[best_seuil_idx]
+    print(f"Meilleur seuil sur train+val : {best_seuil}% (Acc={accs[best_seuil_idx] * 100:.2f}%)")
+
+    # Evaluer seuil sur test set
+    print(f"Évaluation du seuil sur test — {len(test_dataset)} bâtiments, "
+          f"seuil={best_seuil}%, modèle={config['model']}, rgb_only={config['rgb_only']}.")
+    test_meter = AverageMeter(n_classes=N_CLASSES, n_years=N_YEARS, device=device)
+    with torch.no_grad():
+        for batch_id, batch in enumerate(test_loader):
+            preds, emprise, frame_id, years = segment_batch(
+                batch, model, device
+            )
+            pred_frame_id = predict_frame_id(
+                preds, emprise, years, [best_seuil], BUILDING_CLASS_IDX
+            )[:, 0]  # (B,)
+
+            test_meter.update(zero_loss, pred_frame_id, frame_id, years)
+
+            if (batch_id + 1) % config["print_interval"] == 0:
+                print(f"  [Iter {batch_id + 1}/{len(test_loader)}]")
+    _, mae, signed_mae, acc, acc1, acc2 = test_meter.get_metrics()
+    print(
+        f"[Test - Seuil {best_seuil}%] "
+        f"Acc: {acc * 100:.2f}% | Acc@1: {acc1 * 100:.2f}% | Acc@2: {acc2 * 100:.2f}% "
+        f"| MAE: {mae:.3f} frames | Signed MAE: {signed_mae:.3f} frames"
+    )
+    summary.update({
+        "best_seuil": best_seuil,
+        "test_acc": acc,
+        "test_acc1": acc1,
+        "test_acc2": acc2,
+        "test_mae": mae,
+        "test_signed_mae": signed_mae,
+    })  
+    with open(os.path.join(save_path, "summary.json"), "w") as f:
+        json.dump(summary, f, indent=4)
+    
+    cm_frame = meters[s_idx].conf_mat_frame_id.cpu().numpy()
+    cm_year = meters[s_idx].conf_mat_year.cpu().numpy()
+
+    df_frame = pd.DataFrame(
+        cm_frame,
+        index=[f"gt_{i}" for i in range(N_CLASSES)],
+        columns=[f"pred_{i}" for i in range(N_CLASSES)],
+    )
+    df_frame.index.name = "gt_frame_id"
+    df_frame.columns.name = "pred_frame_id"
+    df_frame.to_csv(
+        os.path.join(save_path, f"confusion_matrix_frame_id.csv")
+    )
+
+    df_year = pd.DataFrame(
+        cm_year,
+        index=[f"gt_{i}" for i in range(2000, 2000 + N_YEARS)],
+        columns=[f"pred_{i}" for i in range(2000, 2000 + N_YEARS)],
+    )
+    df_year.index.name = "gt_year"
+    df_year.columns.name = "pred_year"
+    df_year.to_csv(
+        os.path.join(save_path, f"confusion_matrix_years.csv")
+    )
