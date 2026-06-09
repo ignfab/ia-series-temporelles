@@ -10,14 +10,12 @@ La tâche consiste à identifier, pour un bâtiment donné, le **premier instant
 
 ```
 .
-├── config.py          # Hyperparamètres globaux (batch size, workers…)
-├── data.py            # Dataset PyTorch (BuildingTimeSeriesDataset)
-├── main.py            # Point d'entrée : chargement, modèle, entraînement, visu
-├── utils.py           # Fonctions de visualisation et métriques
-├── requirements.txt   # Dépendances Python
-│
-├── all_file_paths.json    # Chemins des .tif par département et bâtiment (à fournir)
-└── date_apparition.json   # Année d'apparition par bâtiment (à fournir)
+├── configs/                # Fichiers de configuration (YAML)
+├── data/                   # Code de chargement des données
+├── models/                 # Implémentations de modèles (AnySat, FLAIR-HUB, etc.)
+├── utils/                  # Fonctions utilitaires (visualisation, métriques)
+├── train.py                # Script d'entraînement et d'évaluation
+|── threshold.py            # Script d'évaluation par seuils (pour config_seuil.yaml)
 ```
 
 ---
@@ -37,11 +35,11 @@ La tâche consiste à identifier, pour un bâtiment donné, le **premier instant
 
 ### Splits
 
-| Split  | Départements                              | Nb deps |
-|--------|-------------------------------------------|---------|
-| Train  | 21 → 95                                   | 75      |
-| Val    | 01–07, 09–11                              | 10      |
-| Test   | 12–19, 2A, 2B                             | 10      |
+| Split  | Départements                                                     | Nb deps |
+|--------|------------------------------------------------------------------|---------|
+| Test   | 12, 15, 22, 26, 36, 61, 64, 68, 69, 71, 73, 75, 76, 83, 84, 85   | 16      |
+| Val    | 04, 14, 29, 31, 58, 66, 67, 77                                   | 8       |
+| Train  | Les départements (Métropole + Corse) restants excepté le 08      | 71      |
 
 ### Format des images
 
@@ -59,71 +57,20 @@ Les canaux sont harmonisés automatiquement à **4 canaux (R, G, B, IR)** :
 ## Installation
 
 ```bash
+python -m venv datation-env
+source datation-env/bin/activate
 pip install -r requirements.txt
 ```
 
 ---
 
-## Utilisation rapide
-
-```python
-from data import BuildingTimeSeriesDataset
-
-dataset = BuildingTimeSeriesDataset(root_path='/path/to/data', split='train')
-sample  = dataset[0]
-
-# sample['images']     → Tensor (T, 4, H, W)
-# sample['emprise']    → Tensor (H, W)
-# sample['frame_id']   → int  (label de la tâche)
-# sample['n_channels'] → Tensor (T, 4)
+```bash
+mkdir results
+mkdir ckpt
 ```
 
-### Visualisation
-
-```python
-from utils import visualize_time_series, visualize_prediction
-
-# Série temporelle brute
-visualize_time_series(dataset, idx=0)
-
-# Comparaison ground truth / prédiction
-visualize_prediction(dataset, idx=0, pred_frame_id=3)
-```
-
----
-
-## Exemple de modèle : AnySat
-
-```python
-import torch
-
-AnySat = torch.hub.load('gastruc/anysat', 'anysat', pretrained=True, flash_attn=False)
-
-images = dataset[0]['images']  # (T, 4, H, W)
-output = AnySat(
-    {"aerial": images},
-    patch_size=20,
-    output='dense',
-    output_modality='aerial'
-)
-print(output.shape)  # (T, D, H', W')
-```
-
----
-
-## Métriques
-
-Deux métriques sont disponibles dans `utils.py` :
-
-- **Accuracy** (`compute_accuracy`) : pourcentage de prédictions exactes (frame exact).
-- **MAE** (`compute_mae`) : erreur absolue moyenne en nombre de frames.
-
----
-
-## Étendre le benchmark
-
-Pour ajouter une nouvelle méthode :
-
-1. Implémenter le modèle (dans un nouveau fichier, ex. `models/my_model.py`).
-2. Décommenter et compléter la boucle d'entraînement dans `main.py`.
-3. Évaluer sur le split `test` en reportant Accuracy et MAE.
+Télécharger les poids de modèles pré-entraînés (ex. FLAIR-HUB) et les placer dans `ckpt/`.
+- FLAIR-HUB IR : (https://huggingface.co/IGNF/FLAIR-HUB_LC-A_IR_swinbase-upernet/resolve/main/FLAIR-HUB_LC-A_IR_swinbase-upernet.safetensors?download=true)[lien de téléchargement] 
+- FLAIR-HUB RGB : (https://huggingface.co/IGNF/FLAIR-HUB_LC-A_RGB_swinbase-upernet/resolve/main/FLAIR-HUB_LC-A_RGB_swinbase-upernet.safetensors?download=true)[lien de téléchargement]
+- FLAIR-INC RGB-IR : (https://huggingface.co/IGNF/FLAIR-INC_rgbi_15cl_resnet34-unet/resolve/main/FLAIR-INC_rgbi_15cl_resnet34-unet_weights.pth?download=true)[lien de téléchargement]
+- FLAIR-INC RGB : (https://huggingface.co/IGNF/FLAIR-INC_rgb_15cl_resnet34-unet/resolve/main/FLAIR-INC_rgb_15cl_resnet34-unet_weights.pth?download=true)[lien de téléchargement]
