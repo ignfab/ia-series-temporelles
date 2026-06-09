@@ -70,7 +70,7 @@ mkdir ckpt
 ```
 
 Télécharger les poids de modèles pré-entraînés (ex. FLAIR-HUB) et les placer dans `ckpt/`.
-- FLAIR-HUB IR : (https://huggingface.co/IGNF/FLAIR-HUB_LC-A_IR_swinbase-upernet/resolve/main/FLAIR-HUB_LC-A_IR_swinbase-upernet.safetensors?download=true)[lien de téléchargement] 
-- FLAIR-HUB RGB : (https://huggingface.co/IGNF/FLAIR-HUB_LC-A_RGB_swinbase-upernet/resolve/main/FLAIR-HUB_LC-A_RGB_swinbase-upernet.safetensors?download=true)[lien de téléchargement]
-- FLAIR-INC RGB-IR : (https://huggingface.co/IGNF/FLAIR-INC_rgbi_15cl_resnet34-unet/resolve/main/FLAIR-INC_rgbi_15cl_resnet34-unet_weights.pth?download=true)[lien de téléchargement]
-- FLAIR-INC RGB : (https://huggingface.co/IGNF/FLAIR-INC_rgb_15cl_resnet34-unet/resolve/main/FLAIR-INC_rgb_15cl_resnet34-unet_weights.pth?download=true)[lien de téléchargement]
+- FLAIR-HUB IR : [lien de téléchargement](https://huggingface.co/IGNF/FLAIR-HUB_LC-A_IR_swinbase-upernet/resolve/main/FLAIR-HUB_LC-A_IR_swinbase-upernet.safetensors?download=true)
+- FLAIR-HUB RGB : [lien de téléchargement](https://huggingface.co/IGNF/FLAIR-HUB_LC-A_RGB_swinbase-upernet/resolve/main/FLAIR-HUB_LC-A_RGB_swinbase-upernet.safetensors?download=true)
+- FLAIR-INC RGB-IR : [lien de téléchargement](https://huggingface.co/IGNF/FLAIR-INC_rgbi_15cl_resnet34-unet/resolve/main/FLAIR-INC_rgbi_15cl_resnet34-unet_weights.pth?download=true)
+- FLAIR-INC RGB : [lien de téléchargement](https://huggingface.co/IGNF/FLAIR-INC_rgb_15cl_resnet34-unet/resolve/main/FLAIR-INC_rgb_15cl_resnet34-unet_weights.pth?download=true)
