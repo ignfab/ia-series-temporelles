@@ -96,7 +96,10 @@ if __name__ == "__main__":
     N_CLASSES = config["n_classes"]
     USE_FLOAT16 = config["use_float16"]
     collate_fn = collate_fn_fixed if config["collate_fn"] == "fixed" else collate_fn_max
-    
+
+    # Save config in results folder for reproducibility
+    with open(os.path.join(save_path, "config.yaml"), "w") as f:
+        yaml.dump(config, f)
 
     # ------------------------------------------------------------------------------
     # 1. Chargement des datasets
@@ -141,14 +144,14 @@ if __name__ == "__main__":
         feature_dim = 1920 if config["rgb_only"] or config["fuse_mode"] == "average" else 3840
         model = FlairHubWrapper(
             rgb_only=config["rgb_only"],
-            fuse_mode="concat",
+            fuse_mode=config["fuse_mode"],
             use_float16=USE_FLOAT16
         )
     elif config["model"] == "flairinc":
         feature_dim = 960 if config["rgb_only"] or config["fuse_mode"] == "average" else 1920
         model = FlairIncWrapper(
             rgb_only=config["rgb_only"],
-            fuse_mode="concat",
+            fuse_mode=config["fuse_mode"],
             use_float16=USE_FLOAT16
         )  
     elif config["model"] == "anysat":
@@ -181,10 +184,19 @@ if __name__ == "__main__":
     device = config["device"]
     model = model.to(device)
     classifier = classifier.to(device)
-
     best_val_acc = 0.
+    curr_epoch = 1
+
+    if config["resume"] and os.path.exists(os.path.join(save_path, 'classifier.pt')):
+        ckpt = torch.load(os.path.join(save_path, 'classifier.pt'), map_location=device)
+        classifier.load_state_dict(ckpt["classifier"])
+        curr_epoch = ckpt["epoch"] + 1
+        best_val_acc = ckpt["val_acc"]
+        logger.restart_from(curr_epoch)
+        print(logger.logs)
+
     print(f"Starting training for {n_epochs} epochs...")
-    for epoch in range(1, n_epochs + 1):
+    for epoch in range(curr_epoch, n_epochs + 1):
         print(f"Epoch {epoch}/{n_epochs}")
         # -- Phase entraînement --
         classifier.train()

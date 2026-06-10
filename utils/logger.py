@@ -9,7 +9,11 @@ class Logger:
 
     def create_log_file(self):
         self.log_file = os.path.join(self.save_path, "log.json")
-        self.logs = {}
+        if os.path.exists(self.log_file):
+            with open(self.log_file, 'r') as f:
+                self.logs = json.load(f)
+        else:
+            self.logs = {}
 
     def log(self, curr_dict):
         for key, value in curr_dict.items():
@@ -18,5 +22,11 @@ class Logger:
             if 'acc' in key:
                 value = value * 100
             self.logs[key].append(value)
+        with open(self.log_file, 'w') as f:
+            json.dump(self.logs, f, indent=4)
+
+    def restart_from(self, epoch):
+        for key in self.logs:
+            self.logs[key] = self.logs[key][:epoch-1]
         with open(self.log_file, 'w') as f:
             json.dump(self.logs, f, indent=4)

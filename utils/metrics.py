@@ -30,8 +30,8 @@ class AverageMeter(object):
         self.acc1 += (abs(pred - label) <= 1).sum()
         self.acc2 += (abs(pred - label) <= 2).sum()
         self.conf_mat_frame_id += torch.bincount(label.flatten() * self.n_classes + pred.flatten(), minlength=self.n_classes**2).reshape(self.n_classes, self.n_classes)
-        pred_years = years[torch.arange(pred.size(0), device=pred.device), pred] - 2000
-        label_years = years[torch.arange(label.size(0), device=label.device), label] - 2000        
+        pred_years = torch.clamp(years[torch.arange(pred.size(0), device=pred.device), pred] - 2000, min=0)
+        label_years = torch.clamp(years[torch.arange(label.size(0), device=label.device), label] - 2000, min=0)     
         self.conf_mat_year += torch.bincount(label_years.flatten() * self.n_years + pred_years.flatten(), minlength=self.n_years**2).reshape(self.n_years, self.n_years)
 
     def get_metrics(self):

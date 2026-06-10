@@ -1,4 +1,4 @@
-exp_name: "flairinc_rgb_only_linear"
+exp_name: "flairhub_linear_rgb_only"
 device: "cuda"  # "cuda" or "cpu"
 batch_size: 4
 collate_fn: "fixed"  # "fixed" or "max"
@@ -14,7 +14,9 @@ learning_rate: 0.0001
 weight_decay: 0.001
 rgb_only: true
 # fuse_mode: "average"  # "average" or "concat"
-model: 'flairinc'  # or 'anysat', or 'flairinc'
+model: 'flairhub'  # or 'anysat', or 'flairinc'
 classifier : 'linear'  # "ltae" or 'linear'
 root_path: 
 print_interval: 500
+fuse_mode: "concat"  # "average" or "concat"
+resume: false  # Whether to resume training from the last checkpoint in the results folder.
