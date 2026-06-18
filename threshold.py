@@ -50,8 +50,9 @@ def predict_frame_id(preds, emprise, years, seuils, building_class_idx):
     # On masque les frames de padding (years==0 dans le collate par défaut).
     valid_mask = years > 0                                              # (B, T)
     above = above & valid_mask.unsqueeze(-1)
-    detection_found = above.any(dim=1)                                  # (B, S)
-    first_detection = above.float().argmax(dim=1)                       # (B, S)
+    above_stable = above.flip(dims=[1]).cumprod(dim=1).flip(dims=[1])  # (B, T, S)
+    detection_found = above_stable.any(dim=1)                           # (B, S)
+    first_detection = above_stable.float().argmax(dim=1)                # (B, S)
     last_valid_frame = valid_mask.long().sum(dim=1) - 1                 # (B,)
 
     pred_frame_id = torch.where(
